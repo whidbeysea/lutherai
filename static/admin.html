@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Luther Bot — Admin</title>
+<style>
+  body { font-family: -apple-system, Segoe UI, sans-serif; margin: 0; background: #f5f5f5; color: #222; }
+  header { background: #222; color: white; padding: 1rem 1.5rem; }
+  header h1 { margin: 0; font-size: 1.2rem; }
+  main { max-width: 1000px; margin: 0 auto; padding: 1.5rem; }
+
+  .stats { display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+  .stat-card {
+    background: white; border-radius: 8px; padding: 1rem 1.5rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1); flex: 1; min-width: 140px;
+  }
+  .stat-card .value { font-size: 1.8rem; font-weight: bold; }
+  .stat-card .label { font-size: 0.8rem; color: #666; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  #messages { display: flex; flex-direction: column; gap: 0.8rem; }
+  .message-card {
+    background: white; border-radius: 8px; padding: 1rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  }
+  .message-card .meta { font-size: 0.75rem; color: #888; margin-bottom: 0.5rem; }
+  .message-card .question { font-weight: bold; margin-bottom: 0.4rem; }
+  .message-card .response { white-space: pre-wrap; line-height: 1.4; margin-bottom: 0.5rem; }
+  .message-card details { font-size: 0.8rem; color: #555; }
+  .message-card summary { cursor: pointer; color: #7a1f1f; }
+  .source-chunk { border-left: 3px solid #ddd; padding: 0.4rem 0.6rem; margin: 0.4rem 0; background: #fafafa; }
+
+  #loadMore { display: block; margin: 1rem auto; padding: 0.6rem 1.2rem; cursor: pointer; }
+  #status { color: #888; font-size: 0.85rem; }
+</style>
+</head>
+<body>
+
+<header><h1>Luther Bot — Admin</h1></header>
+
+<main>
+  <div class="stats" id="stats"></div>
+  <div id="status">Loading...</div>
+  <div id="messages"></div>
+  <button id="loadMore" style="display:none;">Load more</button>
+</main>
+
+<script>
+let offset = 0;
+const LIMIT = 25;
+
+async function loadStats() {
+  const resp = await fetch('/admin/api/stats');
+  const data = await resp.json();
+  const statsEl = document.getElementById('stats');
+  statsEl.innerHTML = `
+    <div class="stat-card"><div class="value">${data.total_sessions}</div><div class="label">Sessions</div></div>
+    <div class="stat-card"><div class="value">${data.total_messages}</div><div class="label">Prompts</div></div>
+    <div class="stat-card"><div class="value">${data.messages_per_day[0] ? data.messages_per_day[0].count : 0}</div><div class="label">Today</div></div>
+  `;
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+async function loadMessages() {
+  const resp = await fetch(`/admin/api/messages?limit=${LIMIT}&offset=${offset}`);
+  const data = await resp.json();
+  const messagesEl = document.getElementById('messages');
+
+  for (const msg of data) {
+    const retrieved = JSON.parse(msg.retrieved_json);
+    const sourcesHtml = retrieved.map(r =>
+      `<div class="source-chunk"><strong>${escapeHtml(r.metadata.source)}, ${r.metadata.year}</strong> (distance ${r.distance.toFixed(3)})<br>${escapeHtml(r.text.slice(0, 200))}...</div>`
+    ).join('');
+
+    const card = document.createElement('div');
+    card.className = 'message-card';
+    card.innerHTML = `
+      <div class="meta">${msg.created_at} &middot; session ${msg.session_id.slice(0, 8)}</div>
+      <div class="question">${escapeHtml(msg.question)}</div>
+      <div class="response">${escapeHtml(msg.response)}</div>
+      <details><summary>Retrieved passages (${retrieved.length})</summary>${sourcesHtml}</details>
+    `;
+    messagesEl.appendChild(card);
+  }
+
+  offset += data.length;
+  document.getElementById('status').style.display = 'none';
+  document.getElementById('loadMore').style.display = data.length === LIMIT ? 'block' : 'none';
+}
+
+document.getElementById('loadMore').addEventListener('click', loadMessages);
+
+loadStats();
+loadMessages();
+</script>
+
+</body>
+</html>

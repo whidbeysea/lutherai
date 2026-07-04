@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Talk to Martin Luther</title>
+<style>
+  :root {
+    --ink: #2b241a;
+    --paper: #f4ecd8;
+    --paper-dark: #e8dcc0;
+    --accent: #7a1f1f;
+    --accent-dark: #591616;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    font-family: Georgia, 'Times New Roman', serif;
+    background: var(--paper);
+    color: var(--ink);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh; /* dynamic viewport height -- keeps the input bar pinned even as mobile browser chrome shows/hides */
+    overflow: hidden;
+  }
+  header {
+    padding: 1.2rem 1.5rem;
+    padding-top: max(1.2rem, env(safe-area-inset-top));
+    background: var(--accent);
+    color: var(--paper);
+    text-align: center;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    flex-shrink: 0;
+  }
+  header h1 { margin: 0; font-size: 1.4rem; letter-spacing: 0.5px; }
+  header p { margin: 0.25rem 0 0; font-size: 0.85rem; opacity: 0.85; }
+
+  #chat {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 1.5rem;
+    max-width: 760px;
+    width: 100%;
+    margin: 0 auto;
+  }
+  .msg { margin-bottom: 1.3rem; line-height: 1.55; white-space: pre-wrap; }
+  .msg.user {
+    text-align: right;
+  }
+  .msg.user .bubble {
+    background: var(--paper-dark);
+    display: inline-block;
+    padding: 0.6rem 1rem;
+    border-radius: 10px;
+    max-width: 85%;
+    text-align: left;
+  }
+  .msg.luther .label {
+    font-weight: bold;
+    color: var(--accent);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 0.3rem;
+  }
+  .msg.luther .bubble { max-width: 100%; }
+  .msg.loading .bubble { opacity: 0.6; font-style: italic; }
+
+  .sources {
+    margin-top: 0.4rem;
+    font-family: -apple-system, Segoe UI, sans-serif;
+    font-size: 0.72rem;
+  }
+  .sources summary {
+    cursor: pointer;
+    color: var(--accent);
+    display: inline-block;
+    opacity: 0.75;
+  }
+  .sources summary:hover { opacity: 1; }
+  .sources-list {
+    margin-top: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .source-card {
+    background: var(--paper-dark);
+    border-left: 3px solid var(--accent);
+    border-radius: 4px;
+    padding: 0.5rem 0.7rem;
+  }
+  .source-title {
+    font-weight: bold;
+    color: var(--accent);
+    margin-bottom: 0.25rem;
+  }
+  .source-category {
+    font-weight: normal;
+    text-transform: uppercase;
+    font-size: 0.65rem;
+    color: #8a7d5e;
+    letter-spacing: 0.5px;
+  }
+  .source-snippet {
+    color: #5c5140;
+    line-height: 1.4;
+    font-style: italic;
+  }
+
+  #input-area {
+    border-top: 1px solid var(--paper-dark);
+    padding: 1rem 1.5rem;
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+    display: flex;
+    gap: 0.6rem;
+    max-width: 760px;
+    width: 100%;
+    margin: 0 auto;
+    flex-shrink: 0;
+  }
+  #question {
+    flex: 1;
+    padding: 0.7rem 0.9rem;
+    font-size: 16px; /* keep >=16px to stop iOS Safari auto-zooming on focus */
+    font-family: inherit;
+    border: 1px solid var(--paper-dark);
+    border-radius: 6px;
+    background: white;
+    min-width: 0; /* let flexbox actually shrink this on narrow screens */
+  }
+  #send {
+    padding: 0.7rem 1.2rem;
+    font-size: 16px;
+    font-family: inherit;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    min-height: 44px; /* touch-friendly tap target */
+    flex-shrink: 0;
+  }
+  #send:hover { background: var(--accent-dark); }
+  #send:disabled { opacity: 0.5; cursor: default; }
+
+  @media (max-width: 480px) {
+    header { padding: 0.9rem 1rem; padding-top: max(0.9rem, env(safe-area-inset-top)); }
+    header h1 { font-size: 1.15rem; }
+    header p { font-size: 0.75rem; }
+    #chat { padding: 1rem 0.9rem; }
+    #input-area { padding: 0.75rem 0.9rem; padding-bottom: max(0.75rem, env(safe-area-inset-bottom)); gap: 0.4rem; }
+    #send { padding: 0.7rem 1rem; }
+    .msg.user .bubble { max-width: 92%; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Martin Luther</h1>
+  <p>A seminarian's AI experiment &mdash; grounded in Luther's writings and reasoning &mdash; not a substitute for scholarship!</p>
+</header>
+
+<div id="chat"></div>
+
+<div id="input-area">
+  <input id="question" type="text" placeholder="Ask Luther a question..." autocomplete="off">
+  <button id="send">Send</button>
+</div>
+
+<script>
+const chatEl = document.getElementById('chat');
+const questionEl = document.getElementById('question');
+const sendBtn = document.getElementById('send');
+
+let sessionId = sessionStorage.getItem('luther_session_id') || null;
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function addMessage(role, text, sources) {
+  const wrap = document.createElement('div');
+  wrap.className = 'msg ' + role;
+  if (role === 'luther') {
+    wrap.innerHTML = '<div class="label">Luther</div><div class="bubble"></div>';
+    wrap.querySelector('.bubble').textContent = text;
+    if (sources && sources.length) {
+      const totalPassages = sources.reduce((sum, s) => sum + s.passage_count, 0);
+      const cards = sources.map(s => `
+        <div class="source-card">
+          <div class="source-title">${escapeHtml(s.source)}, ${s.year} <span class="source-category">${escapeHtml(s.category)}</span></div>
+          <div class="source-snippet">${s.passage_count} passage${s.passage_count === 1 ? '' : 's'} drawn on</div>
+        </div>
+      `).join('');
+      const sourcesEl = document.createElement('details');
+      sourcesEl.className = 'sources';
+      sourcesEl.innerHTML = `<summary>Sources (${totalPassages})</summary><div class="sources-list">${cards}</div>`;
+      wrap.appendChild(sourcesEl);
+    }
+  } else {
+    wrap.innerHTML = '<div class="bubble"></div>';
+    wrap.querySelector('.bubble').textContent = text;
+  }
+  chatEl.appendChild(wrap);
+  chatEl.scrollTop = chatEl.scrollHeight;
+  return wrap;
+}
+
+async function send() {
+  const question = questionEl.value.trim();
+  if (!question) return;
+
+  addMessage('user', question);
+  questionEl.value = '';
+  sendBtn.disabled = true;
+
+  const loadingEl = document.createElement('div');
+  loadingEl.className = 'msg luther loading';
+  loadingEl.innerHTML = '<div class="label">Luther</div><div class="bubble">...composing a reply...</div>';
+  chatEl.appendChild(loadingEl);
+  chatEl.scrollTop = chatEl.scrollHeight;
+
+  try {
+    const resp = await fetch('/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: question, session_id: sessionId })
+    });
+    if (!resp.ok) throw new Error('request failed: ' + resp.status);
+    const data = await resp.json();
+    sessionId = data.session_id;
+    sessionStorage.setItem('luther_session_id', sessionId);
+    loadingEl.remove();
+    addMessage('luther', data.response, data.sources);
+  } catch (err) {
+    loadingEl.remove();
+    addMessage('luther', '(Something went wrong reaching the server: ' + err.message + ')');
+  } finally {
+    sendBtn.disabled = false;
+    questionEl.focus();
+  }
+}
+
+sendBtn.addEventListener('click', send);
+questionEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') send();
+});
+</script>
+
+</body>
+</html>

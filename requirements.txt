@@ -1,0 +1,9 @@
+requests
+beautifulsoup4
+lxml
+voyageai
+chromadb
+python-dotenv
+anthropic
+fastapi
+uvicorn[standard]
