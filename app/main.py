@@ -83,6 +83,10 @@ def chat(req: ChatRequest):
         question=req.message,
         response=result["response"],
         retrieved_json=json.dumps(result["retrieved"]),
+        input_tokens=result["input_tokens"],
+        output_tokens=result["output_tokens"],
+        cache_creation_input_tokens=result["cache_creation_input_tokens"],
+        cache_read_input_tokens=result["cache_read_input_tokens"],
     )
 
     # Group retrieved chunks by (source, year) -- multiple chunks commonly come from

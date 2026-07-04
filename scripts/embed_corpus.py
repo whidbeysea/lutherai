@@ -24,15 +24,12 @@ CHROMA_DIR = Path(__file__).resolve().parent.parent / "chroma_db"
 COLLECTION_NAME = "luther_corpus"
 EMBED_MODEL = "voyage-4-large"
 
-# Voyage accounts without a payment method on file are capped at 3 requests/min and
-# 10K tokens/min (the 200M free-token allowance still applies once a card is added --
-# this cap is just about request pacing, not cost). The binding constraint is TPM, not
-# RPM: a ~9000-token batch sent every 21s lands multiple batches inside the same
-# rolling 60s window and blows through 10K TPM immediately. Keep batches safely under
-# the per-minute token cap and space requests a full minute+ apart so each one lands
-# in a fresh window.
-MAX_TOKENS_PER_BATCH = 6000
-SECONDS_BETWEEN_REQUESTS = 80
+# A payment method is now on file with Voyage, which lifts the unverified-account
+# throttle (was 3 req/min, 10K tokens/min) -- standard rate limits apply, so batches
+# can be large and back-to-back. Kept as constants (not inlined) in case a future
+# fresh account ever needs the conservative pacing again.
+MAX_TOKENS_PER_BATCH = 100_000
+SECONDS_BETWEEN_REQUESTS = 0
 WORDS_PER_TOKEN_ESTIMATE = 1.3
 
 
@@ -55,7 +52,7 @@ def make_batches(chunks: list[dict]) -> list[list[dict]]:
 
 
 def embed_with_retry(voyage: "voyageai.Client", texts: list[str], model: str, input_type: str):
-    delay = SECONDS_BETWEEN_REQUESTS
+    delay = 5  # retry backoff base, independent of the (now zero) inter-batch pacing
     for attempt in range(10):
         try:
             return voyage.embed(texts, model=model, input_type=input_type)

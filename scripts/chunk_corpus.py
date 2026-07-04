@@ -164,6 +164,19 @@ def chunk_paragraphs(slug: str, text: str) -> list[dict]:
         # front matter didn't preserve blank-line breaks; fall back to single-newline
         paragraphs = [p.strip() for p in text.split("\n") if p.strip()]
 
+    # Some works were fetched as multiple part files that each repeat the same short
+    # title-banner paragraph -- drop exact-duplicate paragraphs here, before they get
+    # packed into chunks, since by the time paragraphs are merged into token-sized
+    # chunks a repeat may no longer form its own standalone (and thus easy to detect)
+    # duplicate chunk.
+    seen_paragraphs = set()
+    deduped_paragraphs = []
+    for p in paragraphs:
+        if p not in seen_paragraphs:
+            seen_paragraphs.add(p)
+            deduped_paragraphs.append(p)
+    paragraphs = deduped_paragraphs
+
     # Wittenberg HTML often yields a handful of very long block-level paragraphs;
     # break any paragraph that alone exceeds the target chunk size.
     expanded = []
@@ -222,8 +235,21 @@ def main():
         text = clean_path.read_text(encoding="utf-8")
         chunker = SPECIAL_CHUNKERS.get(slug, chunk_paragraphs)
         records = chunker(slug, text)
-        print(f"{slug}: {len(records)} chunks ({chunker.__name__})")
-        all_records.extend(records)
+
+        # Some works (e.g. Treatise on Good Works) were fetched as multiple part
+        # files that each repeat the same title-banner header -- that produces
+        # exact-duplicate junk chunks. Drop repeats within a work, keep the first.
+        seen_text = set()
+        deduped = []
+        for r in records:
+            if r["text"] not in seen_text:
+                seen_text.add(r["text"])
+                deduped.append(r)
+        dropped = len(records) - len(deduped)
+
+        print(f"{slug}: {len(deduped)} chunks ({chunker.__name__})"
+              + (f", dropped {dropped} duplicate(s)" if dropped else ""))
+        all_records.extend(deduped)
 
     with OUT_PATH.open("w", encoding="utf-8") as f:
         for rec in all_records:

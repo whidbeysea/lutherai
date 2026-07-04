@@ -33,6 +33,28 @@ NAV_NOISE = [
     "martin luther",  # only drops standalone byline/nav occurrences, not body text
 ]
 
+# Many Wittenberg pages end with a transcriber credit block (name, library, seminary,
+# email, mailing address, phone/fax) repeated verbatim on every page of a multi-part
+# work. It doesn't match NAV_NOISE (lines are under 60 chars but don't contain those
+# keywords), so it survives into chunks and shows up as junk in retrieved passages.
+# Once the trigger line is seen, keep dropping lines as long as they match a known
+# continuation pattern -- stops as soon as a line looks like real content again, so a
+# same-length coincidence in Luther's actual prose won't get eaten.
+CREDIT_BLOCK_TRIGGERS = [
+    "this text was prepared by",
+    "prepared for project wittenberg",
+]
+CREDIT_BLOCK_CONTINUATIONS = [
+    "and is in the public domain",
+    "rev. robert e. smith",
+    "walther library",
+    "concordia theological seminary",
+    "e-mail:",
+    "surface mail:",
+    "phone:",
+    "fax:",
+]
+
 
 def is_nav_noise(line: str) -> bool:
     stripped = line.strip().lower()
@@ -43,6 +65,27 @@ def is_nav_noise(line: str) -> bool:
     return False
 
 
+def is_divider(line: str) -> bool:
+    stripped = line.strip()
+    return bool(stripped) and set(stripped) <= {"-", "_"}
+
+
+def strip_transcriber_credits(lines: list[str]) -> list[str]:
+    result = []
+    skipping = False
+    for line in lines:
+        lower = line.strip().lower()
+        if not skipping and any(t in lower for t in CREDIT_BLOCK_TRIGGERS):
+            skipping = True
+            continue
+        if skipping:
+            if any(c in lower for c in CREDIT_BLOCK_CONTINUATIONS) or is_divider(line):
+                continue
+            skipping = False  # first non-matching line ends the block
+        result.append(line)
+    return result
+
+
 def clean_wittenberg_html(html: str) -> str:
     soup = BeautifulSoup(html, "lxml")
     for tag in soup(["script", "style"]):
@@ -50,6 +93,7 @@ def clean_wittenberg_html(html: str) -> str:
     text = soup.get_text("\n")
     lines = [ln.strip() for ln in text.split("\n")]
     lines = [ln for ln in lines if ln and not is_nav_noise(ln)]
+    lines = strip_transcriber_credits(lines)
     return "\n".join(lines)
 
 
@@ -94,12 +138,21 @@ def clean_archive_org_stream(raw: str) -> str:
     return body[cut:].strip()
 
 
+# Treatise on Good Works was fetched as 7 plain-text part files, each repeating the
+# same title/publication-info header glued directly onto the start of the following
+# paragraph (no blank line between them), so it survives as a repeated *prefix* rather
+# than a standalone duplicate paragraph -- neither NAV_NOISE nor whole-paragraph dedup
+# catches that. Strip it wherever it appears, using the page-range marker (which
+# varies per part but always has this shape) as the reliable end-of-header landmark.
+REPEATED_PART_HEADER = re.compile(r"_A treatise on Good Works.*?pp\. [\d\-]+\.\s*", re.S)
+
+
 def clean_file(path: Path) -> str:
     raw = path.read_text(encoding="utf-8", errors="replace")
     if path.suffix == ".txt" and raw.lstrip().startswith("<!DOCTYPE html"):
         return clean_archive_org_stream(raw)
     if path.suffix == ".txt":
-        return raw  # plain wittenberg .txt file, already clean
+        return REPEATED_PART_HEADER.sub("", raw)  # plain wittenberg .txt file
     if 'class="book-content"' in raw or "class='book-content'" in raw:
         return clean_ccel_html(raw)
     return clean_wittenberg_html(raw)

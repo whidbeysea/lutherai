@@ -53,10 +53,13 @@ async function loadStats() {
   const resp = await fetch('/admin/api/stats');
   const data = await resp.json();
   const statsEl = document.getElementById('stats');
+  const todayCost = data.messages_per_day[0] ? data.messages_per_day[0].cost : 0;
   statsEl.innerHTML = `
     <div class="stat-card"><div class="value">${data.total_sessions}</div><div class="label">Sessions</div></div>
     <div class="stat-card"><div class="value">${data.total_messages}</div><div class="label">Prompts</div></div>
     <div class="stat-card"><div class="value">${data.messages_per_day[0] ? data.messages_per_day[0].count : 0}</div><div class="label">Today</div></div>
+    <div class="stat-card"><div class="value">$${data.total_cost.toFixed(2)}</div><div class="label">Total cost</div></div>
+    <div class="stat-card"><div class="value">$${todayCost.toFixed(3)}</div><div class="label">Today's cost</div></div>
   `;
 }
 
@@ -80,7 +83,7 @@ async function loadMessages() {
     const card = document.createElement('div');
     card.className = 'message-card';
     card.innerHTML = `
-      <div class="meta">${msg.created_at} &middot; session ${msg.session_id.slice(0, 8)}</div>
+      <div class="meta">${msg.created_at} &middot; session ${msg.session_id.slice(0, 8)} &middot; $${msg.cost.toFixed(5)} (${msg.input_tokens}in/${msg.output_tokens}out)</div>
       <div class="question">${escapeHtml(msg.question)}</div>
       <div class="response">${escapeHtml(msg.response)}</div>
       <details><summary>Retrieved passages (${retrieved.length})</summary>${sourcesHtml}</details>

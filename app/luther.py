@@ -87,4 +87,11 @@ def ask_luther(question: str, history: list[dict] | None = None) -> dict:
     )
     text = "".join(block.text for block in response.content if block.type == "text")
 
-    return {"response": text, "retrieved": passages}
+    return {
+        "response": text,
+        "retrieved": passages,
+        "input_tokens": response.usage.input_tokens,
+        "output_tokens": response.usage.output_tokens,
+        "cache_creation_input_tokens": response.usage.cache_creation_input_tokens,
+        "cache_read_input_tokens": response.usage.cache_read_input_tokens,
+    }
