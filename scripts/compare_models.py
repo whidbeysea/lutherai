@@ -20,7 +20,6 @@ def main():
 
     question = sys.argv[1]
     passages = retrieve(question)
-    messages = [{"role": "user", "content": question}]
 
     print(f"Question: {question}")
     print(f"Retrieved {len(passages)} passages: "
@@ -29,7 +28,7 @@ def main():
     for name, backend in BACKENDS.items():
         print(f"\n{'=' * 70}\n{name.upper()}\n{'=' * 70}")
         try:
-            result = backend(passages, messages)
+            result = backend(question, passages, [])
             print(result["response"])
             print(f"\n[tokens: {result['input_tokens']} in / {result['output_tokens']} out]")
         except Exception as e:
