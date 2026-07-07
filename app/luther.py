@@ -62,45 +62,15 @@ def _context_block(passages: list[dict]) -> str:
     return "## Passages from your own writings, relevant to this question\n\n" + _format_context(passages)
 
 
-def _generate_anthropic(question: str, passages: list[dict], history: list[dict]) -> dict:
-    """Two cache_control breakpoints, so both the growing conversation and the static
-    prompt can be served from cache on repeat calls within Anthropic's 5-minute window:
-
-    1. The base system prompt (identical on every call).
-    2. The last message of prior history (identical to the previous call's messages,
-       since history only ever grows by appending).
-
-    For breakpoint 2 to actually work, nothing that changes per-turn (the freshly
-    retrieved passages) can sit ahead of the history in the request -- so, unlike a
-    naive layout, the retrieved-context block is attached to the *current* user
-    message instead of a system block ahead of history. A system block per-turn would
-    invalidate the history cache on every single call, defeating the point.
-    """
+def _generate_anthropic(passages: list[dict], messages: list[dict]) -> dict:
+    """Base prompt and retrieved-context are sent as separate system blocks, with the
+    base prompt marked cache_control so Anthropic caches it (~90% cheaper on repeat
+    calls within the 5-minute cache window) once it's long enough to clear Haiku's
+    4096-token minimum for caching to activate."""
     system_blocks = [
         {"type": "text", "text": _base_prompt(), "cache_control": {"type": "ephemeral"}},
+        {"type": "text", "text": _context_block(passages)},
     ]
-
-    messages = []
-    if history:
-        # Everything but the last history message, unchanged.
-        messages.extend(history[:-1])
-        # Last history message gets the cache breakpoint: everything up through here
-        # (system + all prior turns) is a stable, cacheable prefix on the next call.
-        last = history[-1]
-        messages.append({
-            "role": last["role"],
-            "content": [{"type": "text", "text": last["content"], "cache_control": {"type": "ephemeral"}}],
-        })
-
-    # Current turn: freshly retrieved passages + the question, never cached (both are
-    # new every time), appended after the cacheable prefix rather than ahead of it.
-    messages.append({
-        "role": "user",
-        "content": [
-            {"type": "text", "text": _context_block(passages)},
-            {"type": "text", "text": question},
-        ],
-    })
 
     response = _client().messages.create(
         model=ANTHROPIC_MODEL,
@@ -119,13 +89,11 @@ def _generate_anthropic(question: str, passages: list[dict], history: list[dict]
     }
 
 
-def _generate_ollama(question: str, passages: list[dict], history: list[dict]) -> dict:
+def _generate_ollama(passages: list[dict], messages: list[dict]) -> dict:
     """Ollama has no prompt-caching concept, so the base prompt and retrieved context
     are just concatenated into a single system message alongside conversation history."""
     system_text = _base_prompt() + "\n\n" + _context_block(passages)
-    ollama_messages = [{"role": "system", "content": system_text}] + list(history) + [
-        {"role": "user", "content": question}
-    ]
+    ollama_messages = [{"role": "system", "content": system_text}] + messages
 
     resp = requests.post(
         f"{OLLAMA_BASE_URL}/api/chat",
@@ -160,13 +128,15 @@ def ask_luther(question: str, history: list[dict] | None = None) -> dict:
     might rewrite the query using conversation context).
     """
     passages = retrieve(question)
-    history = list(history or [])
+
+    messages = list(history or [])
+    messages.append({"role": "user", "content": question})
 
     backend_name = os.environ.get("LLM_BACKEND", "anthropic")
     backend = BACKENDS.get(backend_name)
     if backend is None:
         raise RuntimeError(f"Unknown LLM_BACKEND: {backend_name!r} (expected one of {list(BACKENDS)})")
 
-    result = backend(question, passages, history)
+    result = backend(passages, messages)
     result["retrieved"] = passages
     return result
