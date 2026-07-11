@@ -5,3 +5,4 @@ __pycache__/
 chroma_db/
 corpus/raw/
 luther.db
+prompts/*.backup-*.md
